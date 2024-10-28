@@ -3,7 +3,7 @@
 #include <std_msgs/Bool.h>
 class Hokuyo3dDownDetector
 {
-private:
+public:
     ros::Subscriber hokuyo_sub;
     ros::Publisher hokuyo_pub;
     ros::Publisher status_pub;
@@ -14,15 +14,14 @@ private:
     void initializePointCloud();
     void hokuyoSubCB(const sensor_msgs::PointCloud2::ConstPtr msg);
 
-public:
     void mainLoop();
 };
 
 void Hokuyo3dDownDetector::initializePointCloud()
 {
-    for (auto point : tmp_msg.data)
+    for (int i = 0; i < tmp_msg.data.size(); i++)
     {
-        point = 0.0f;
+        tmp_msg.data[i] = 0;
     }
     tmp_msg.header.stamp = ros::Time::now();
     tmp_msg.header.seq = tmp_msg.header.seq >= 0 ? tmp_msg.header.seq + 1 : 0;
@@ -32,19 +31,19 @@ void Hokuyo3dDownDetector::hokuyoSubCB(const sensor_msgs::PointCloud2::ConstPtr 
 {
     prev_time = msg->header.stamp;
     tmp_msg = *msg;
+    status.data = true;
+    hokuyo_pub.publish(tmp_msg);
+    status_pub.publish(status);
 }
 
 void Hokuyo3dDownDetector::mainLoop()
 {
     ros::Rate r(10);
-    ros::NodeHandle nh("");
-    hokuyo_sub = nh.subscribe("hokuyo3d", 10, &hokuyoSubCB, this);
-    hokuyo_pub = nh.advertise<sensor_msgs::PointCloud2>("hokuyo3d_checked", 1);
-    status_pub = nh.advertise<std_msgs::Bool>("hokuyo3d_status", 1);
-    prev_time = ros::Time::now();
+
     while (ros::ok())
     {
-        if ((ros::Time::now() - prev_time) > ros::Duration(0.2))
+        ros::spinOnce();
+        if ((ros::Time::now() - prev_time) > ros::Duration(1))
         {
             initializePointCloud();
             status.data = false;
@@ -58,7 +57,17 @@ void Hokuyo3dDownDetector::mainLoop()
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "hokuyo3d_down_detector");
+
+    ros::NodeHandle nh("");
+
     Hokuyo3dDownDetector node;
+    node.hokuyo_sub = nh.subscribe("hokuyo3d/hokuyo_cloud2", 10, &Hokuyo3dDownDetector::hokuyoSubCB, &node);
+    node.hokuyo_pub = nh.advertise<sensor_msgs::PointCloud2>("hokuyo3d_checked", 1);
+    node.status_pub = nh.advertise<std_msgs::Bool>("hokuyo3d_status", 1);
+
+    ros::Time::waitForValid();
+    node.prev_time = ros::Time::now();
+
     node.mainLoop();
 
     return 0;
